@@ -19,26 +19,37 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-async function parseBody(request: Request): Promise<Record<string, string>> {
+interface ParsedBody {
+  fields: Record<string, string>;
+  files: File[];
+}
+
+async function parseBody(request: Request): Promise<ParsedBody> {
   const contentType = request.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const raw = await request.json<Record<string, unknown>>();
-    const result: Record<string, string> = {};
+    const fields: Record<string, string> = {};
     for (const [k, v] of Object.entries(raw)) {
-      result[k] = String(v);
+      fields[k] = String(v);
     }
-    return result;
+    return { fields, files: [] };
   }
   if (
     contentType.includes("application/x-www-form-urlencoded") ||
     contentType.includes("multipart/form-data")
   ) {
     const formData = await request.formData();
-    const result: Record<string, string> = {};
+    const fields: Record<string, string> = {};
+    const files: File[] = [];
     for (const [k, v] of formData.entries()) {
-      result[k] = String(v);
+      const entry = v as unknown;
+      if (entry instanceof File && entry.size > 0) {
+        files.push(entry);
+      } else if (typeof v === "string") {
+        fields[k] = v;
+      }
     }
-    return result;
+    return { fields, files };
   }
   throw new Error("Unsupported content type");
 }
@@ -52,6 +63,17 @@ function buildEmailBody(fields: Record<string, string>): string {
 
 function encodeBase64(str: string): string {
   return btoa(str);
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  // Wrap at 76 characters per RFC 2045
+  const raw = btoa(binary);
+  return raw.match(/.{1,76}/g)?.join("\r\n") ?? raw;
 }
 
 /**
@@ -90,7 +112,8 @@ async function sendEmail(
   env: Env,
   recipients: string[],
   subject: string,
-  body: string
+  body: string,
+  files: File[] = []
 ): Promise<void> {
   const socket = connect(
     { hostname: "smtp.gmail.com", port: 465 },
@@ -136,15 +159,53 @@ async function sendEmail(
 
     const toHeader = recipients.map((r) => r.trim()).join(", ");
     const date = new Date().toUTCString();
+
+    let contentTypeHeader: string;
+    let messageBody: string;
+
+    if (files.length === 0) {
+      contentTypeHeader = `Content-Type: text/plain; charset=UTF-8`;
+      messageBody = body;
+    } else {
+      const boundary = `----=_Part_${Date.now().toString(16)}`;
+      contentTypeHeader = `Content-Type: multipart/mixed; boundary="${boundary}"`;
+
+      const parts: string[] = [];
+
+      parts.push(
+        [`--${boundary}`, `Content-Type: text/plain; charset=UTF-8`, ``, body].join("\r\n")
+      );
+
+      for (const file of files) {
+        const buffer = await file.arrayBuffer();
+        const base64 = arrayBufferToBase64(buffer);
+        const mimeType = file.type || "application/octet-stream";
+        const safeName = file.name.replace(/[^\w.\-]/g, "_");
+        parts.push(
+          [
+            `--${boundary}`,
+            `Content-Type: ${mimeType}; name="${safeName}"`,
+            `Content-Transfer-Encoding: base64`,
+            `Content-Disposition: attachment; filename="${safeName}"`,
+            ``,
+            base64,
+          ].join("\r\n")
+        );
+      }
+
+      parts.push(`--${boundary}--`);
+      messageBody = parts.join("\r\n");
+    }
+
     const message = [
       `From: ${env.GMAIL_USER}`,
       `To: ${toHeader}`,
       `Subject: ${subject}`,
       `Date: ${date}`,
       `MIME-Version: 1.0`,
-      `Content-Type: text/plain; charset=UTF-8`,
+      contentTypeHeader,
       ``,
-      body,
+      messageBody,
       ``,
       `.`,
       ``,
@@ -187,8 +248,9 @@ export default {
     }
 
     let fields: Record<string, string>;
+    let files: File[];
     try {
-      fields = await parseBody(request);
+      ({ fields, files } = await parseBody(request));
     } catch {
       return json({ error: "Invalid request body" }, 400);
     }
@@ -210,7 +272,7 @@ export default {
     const body = buildEmailBody(fields);
 
     try {
-      await sendEmail(env, recipients, subject, body);
+      await sendEmail(env, recipients, subject, body, files);
       return json({ ok: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
