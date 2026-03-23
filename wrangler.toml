@@ -1,7 +1,10 @@
-name = "nojimaint-email-form"
+name = "form-to-email"
 main = "src/index.ts"
 compatibility_date = "2025-03-21"
 compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
 
 [vars]
 # Override sensitive vars with `wrangler secret put` — never commit real values here.
