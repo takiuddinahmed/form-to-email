@@ -170,6 +170,18 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
+    if (request.method === "GET") {
+      const missing: string[] = [];
+      if (!env.GMAIL_USER) missing.push("GMAIL_USER");
+      if (!env.GMAIL_APP_PASSWORD) missing.push("GMAIL_APP_PASSWORD");
+      if (!env.TO_EMAILS) missing.push("TO_EMAILS");
+
+      if (missing.length > 0) {
+        return json({ ok: false, error: "Missing environment variables", missing }, 500);
+      }
+      return json({ ok: true });
+    }
+
     if (request.method !== "POST") {
       return json({ error: "Method not allowed" }, 405);
     }
