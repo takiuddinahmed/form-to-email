@@ -8,6 +8,6 @@ enabled = true
 
 [vars]
 # Override sensitive vars with `wrangler secret put` — never commit real values here.
-# GMAIL_USER = ""
-# GMAIL_APP_PASSWORD = ""
-# TO_EMAILS = ""
+GMAIL_USER = "taki.prostuti.001@gmail.com"
+GMAIL_APP_PASSWORD = ""
+TO_EMAILS = "takiuddinahmed@gmail.com"
