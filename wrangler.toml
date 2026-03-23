@@ -1,0 +1,10 @@
+name = "nojimaint-email-form"
+main = "src/index.ts"
+compatibility_date = "2025-03-21"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Override sensitive vars with `wrangler secret put` — never commit real values here.
+# GMAIL_USER = ""
+# GMAIL_APP_PASSWORD = ""
+# TO_EMAILS = ""
