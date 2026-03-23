@@ -1,4 +1,4 @@
-name = "nojimaint-email-form"
+name = "form-to-email"
 main = "src/index.ts"
 compatibility_date = "2025-03-21"
 compatibility_flags = ["nodejs_compat"]
